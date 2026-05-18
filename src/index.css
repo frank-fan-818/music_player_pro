@@ -1,0 +1,118 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===  Obsidian Glass Design System === */
+
+@layer base {
+  * {
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  body {
+    @apply bg-obsidian-900 text-text-primary font-sans;
+    overscroll-behavior: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* premium minimal scrollbar */
+  ::-webkit-scrollbar { width: 3px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.14);
+  }
+
+  /* SF Pro Display for large titles */
+  .text-display {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+    letter-spacing: -0.025em;
+  }
+}
+
+@layer components {
+  /* ===  Premium Glass === */
+  .glass {
+    background: rgba(12, 12, 16, 0.78);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .glass-heavy {
+    background: rgba(8, 8, 10, 0.85);
+    backdrop-filter: blur(40px) saturate(200%);
+    -webkit-backdrop-filter: blur(40px) saturate(200%);
+  }
+
+  /* ===  Card Hover === */
+  .card-press {
+    @apply transition-all duration-300;
+  }
+  .card-press:active {
+    transform: scale(0.96);
+    transition: transform 0.1s ease-out;
+  }
+
+  /* ===  Song Row === */
+  .song-row {
+    position: relative;
+    transition: all 0.25s ease;
+  }
+  .song-row:active {
+    background: rgba(245, 197, 66, 0.06);
+    transition: background 0.05s ease;
+  }
+  .song-row::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 25%;
+    bottom: 25%;
+    width: 2px;
+    background: transparent;
+    border-radius: 0 2px 2px 0;
+    transition: background 0.3s ease;
+  }
+  .song-row:hover::before {
+    background: rgba(245, 197, 66, 0.3);
+  }
+
+  /* ===  Cover Art Placeholder === */
+  .cover-placeholder {
+    background: linear-gradient(145deg, #1E1E24, #16161C, #1E1E24);
+  }
+
+  /* ===  Page Titles === */
+  .page-title {
+    @apply text-display font-extrabold text-3xl tracking-tight;
+  }
+
+  /* ===  Staggered List Animation === */
+  .stagger-list > * {
+    animation: staggerFade 0.5s ease-out both;
+  }
+  .stagger-list > *:nth-child(1) { animation-delay: 0.03s; }
+  .stagger-list > *:nth-child(2) { animation-delay: 0.06s; }
+  .stagger-list > *:nth-child(3) { animation-delay: 0.09s; }
+  .stagger-list > *:nth-child(4) { animation-delay: 0.12s; }
+  .stagger-list > *:nth-child(5) { animation-delay: 0.15s; }
+  .stagger-list > *:nth-child(6) { animation-delay: 0.18s; }
+  .stagger-list > *:nth-child(7) { animation-delay: 0.21s; }
+  .stagger-list > *:nth-child(8) { animation-delay: 0.24s; }
+  .stagger-list > *:nth-child(n+9) { animation-delay: 0.27s; }
+}
+
+@layer utilities {
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .safe-top { padding-top: env(safe-area-inset-top, 0px); }
+
+  /* text-rendering for display text */
+  .text-crisp { text-rendering: geometricPrecision; }
+}
