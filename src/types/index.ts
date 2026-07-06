@@ -1,15 +1,17 @@
 // === 核心数据模型 (第6周: 数据建模优先) ===
 // 三根支柱: 可靠(字段约束) / 可扩展(分表而非大表) / 可维护(字段含义清晰)
 
-/** 歌曲实体 - 对应 songs 表 */
-export interface Song {
+/**
+ * 歌曲元信息 (不含音频数据)
+ * 用于列表查询 — 避免将所有 Blob 加载到内存 (C3 fix)
+ */
+export interface SongMeta {
   id: string
   title: string // 歌名 (来自ID3或文件名降级)
   artist: string // 歌手 (未知→'未知歌手')
   album: string // 专辑 (未知→'未知专辑')
   coverArt: string | null // 封面图片 base64 data URL
   lyrics: string | null // 歌词 (内嵌 LRC 或纯文本)
-  audioData: Blob // MP3 原始数据
   duration: number // 时长(秒)
   fileSize: number // 文件大小(bytes)
   format: string // 格式 (mp3/m4a/flac)
@@ -18,6 +20,11 @@ export interface Song {
   trackNumber: number // 曲序号
   isFavorite: boolean // 收藏标记
   importedAt: number // 导入时间戳
+}
+
+/** 歌曲实体 (含音频数据) — 仅 getById 返回, 用于播放 */
+export interface Song extends SongMeta {
+  audioData: Blob // MP3 原始数据 (从 songAudio 表加载)
 }
 
 /** 歌单实体 - 对应 playlists 表 */
@@ -75,10 +82,10 @@ export interface AlbumGroup {
 
 /** 内部接口契约 - 数据层与UI层的约定 (第6周: 契约优先) */
 export interface SongServiceContract {
-  getAll(): Promise<Song[]>
+  getAll(): Promise<SongMeta[]>
   getById(id: string): Promise<Song | undefined>
-  getByArtist(artist: string): Promise<Song[]>
-  getFavorites(): Promise<Song[]>
+  getByArtist(artist: string): Promise<SongMeta[]>
+  getFavorites(): Promise<SongMeta[]>
   importFiles(files: File[], onProgress?: (task: ImportTask) => void): Promise<Song[]>
   delete(id: string): Promise<void>
   toggleFavorite(id: string): Promise<void>

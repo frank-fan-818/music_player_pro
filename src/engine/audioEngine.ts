@@ -1,11 +1,19 @@
 /**
- * 音频引擎 v4
+ * 音频引擎 v4.1
  *
  * 核心设计:
  *   buffer (持久)   : 解码后的音频数据, 仅 load() 时替换
  *   source (临时)   : 每次 play() 新建
  *   playGen (计数器) : stopSource() 递增, onended 检查是否过期
  *                     解决了 Web Audio onended 异步派发导致误判的问题
+ *
+ * v4.1 修复:
+ *   - C2: 添加 play 重入锁, 防止并发 play() 产生双 source
+ *   - H1: 添加 cancelRequested 标记, 防止 async 窗口内 pause() 静默失败
+ *   - H2: 添加 AudioContext statechange 监听, 处理标签页后台化挂起
+ *   - 音量变化添加增益斜坡, 消除咔嗒声
+ *   - 暂停/切歌添加 30ms 淡出, 消除波形阶跃咔嗒声
+ *   - decodeAudioData 超时的未处理 rejection 抑制
  */
 import { songService } from '../db/songService'
 
@@ -37,7 +45,12 @@ export class AudioEngine {
   private rafId = 0
   private listener: PlaybackListener | null = null
   private volume = 0.8
-  private playGen = 0 // 每次 stopSource() 递增，onended 用 gen 判断是否过期
+  private playGen = 0
+
+  // v4.1: 重入锁 + 取消标记
+  private playingPromise: Promise<void> | null = null
+  private cancelRequested = false
+  private stateChangeBound = false
 
   setListener(l: PlaybackListener | null) { this.listener = l }
 
@@ -56,13 +69,29 @@ export class AudioEngine {
     if (!this.ctx || this.ctx.state === 'closed') {
       this.ctx = new AudioContext()
       this.analyser = this.ctx.createAnalyser()
-      this.analyser.fftSize = 256 // 128 frequency bins, 适合移动端
+      this.analyser.fftSize = 256
       this.analyser.smoothingTimeConstant = 0.8
       this.gainNode = this.ctx.createGain()
-      // 默认链: analyser → gain → dest (EQ filters 插在中间)
       this.analyser.connect(this.gainNode)
       this.gainNode.connect(this.ctx.destination)
+      this.stateChangeBound = false
     }
+
+    // H2: 监听 AudioContext 状态变化 (标签页后台化/恢复)
+    if (!this.stateChangeBound && this.ctx) {
+      this.stateChangeBound = true
+      this.ctx.addEventListener('statechange', () => {
+        if (!this.ctx) return
+        if (this.ctx.state === 'suspended' && this.state === 'playing') {
+          // 标签页被后台化 → 记录位置并暂停
+          this.pausedAt = this.ctx.currentTime - this.startedAt
+          this.stopSource()
+          this.setState('paused')
+          this.log('auto_pause', { reason: 'context_suspended', position: this.pausedAt })
+        }
+      })
+    }
+
     if (this.ctx.state === 'suspended') {
       await this.ctx.resume()
     }
@@ -71,11 +100,18 @@ export class AudioEngine {
   /** 重建 EQ 滤波链: 断开旧链 → 串联 BiquadFilter → 接 gain */
   buildEQChain(bands: EQBand[]): void {
     if (!this.ctx || !this.analyser || !this.gainNode) return
+
     // 断开 analyser → gain 的直接连接
     this.analyser.disconnect()
     // 拆除旧 EQ 滤镜
     for (const f of this.eqFilters) f.disconnect()
     this.eqFilters = []
+
+    if (bands.length === 0) {
+      // 空 bands → 直连
+      this.analyser.connect(this.gainNode)
+      return
+    }
 
     let prev: AudioNode = this.analyser
     for (const band of bands) {
@@ -89,6 +125,13 @@ export class AudioEngine {
       this.eqFilters.push(filter)
     }
     prev.connect(this.gainNode)
+  }
+
+  /** 更新单个 EQ 频段增益 (不重建链, 无爆音) */
+  updateEQBandGain(index: number, gain: number): void {
+    if (index >= 0 && index < this.eqFilters.length) {
+      this.eqFilters[index].gain.value = gain
+    }
   }
 
   /** 获取频谱数据 (给 Visualizer 组件) */
@@ -116,6 +159,7 @@ export class AudioEngine {
 
   async load(songId: string): Promise<void> {
     this.log('load_start', { songId })
+    this.cancelRequested = false
     this.stopSource()
     this.buffer = null
     this.setState('loading')
@@ -130,6 +174,8 @@ export class AudioEngine {
       await this.ensureContext()
       const arrayBuffer = await song.audioData.arrayBuffer()
       const decodePromise = this.ctx!.decodeAudioData(arrayBuffer)
+      // 抑制超时后 decodePromise 的未处理 rejection
+      decodePromise.catch(() => {})
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('音频解码超时')), 10000))
       this.buffer = await Promise.race([decodePromise, timeoutPromise])
@@ -149,24 +195,48 @@ export class AudioEngine {
 
   // ======  播放 ======
 
+  /**
+   * 播放音频
+   *
+   * v4.1: 添加重入锁 (C2 fix)
+   * 如果前一次 play() 尚未完成 (在 async 间隙中), 返回正在进行的 Promise
+   * 防止并发调用产生两个同时播放的 AudioBufferSourceNode
+   */
   async play(vol?: number): Promise<void> {
     if (!this.buffer || !this.ctx || !this.gainNode) return
 
-    this.stopSource() // 递增 playGen，停止旧 source
-    this.setState('playing') // 先设状态，消除 async 间隙
+    // C2 fix: 重入锁 — 前一次 play() 未完成则复用其 Promise
+    if (this.playingPromise) return this.playingPromise
+
+    this.playingPromise = this.doPlay(vol)
+    try {
+      await this.playingPromise
+    } finally {
+      this.playingPromise = null
+    }
+  }
+
+  private async doPlay(vol?: number): Promise<void> {
+    if (!this.buffer || !this.ctx || !this.gainNode) return
+
+    this.cancelRequested = false
+    this.stopSource()
 
     await this.ensureContext()
+
+    // H1 fix: ensureContext() 期间 pause() 或新的 play() 可能已设置取消标记
+    if (this.cancelRequested || !this.buffer) return
+
     if (vol !== undefined) this.volume = vol
 
-    const gen = this.playGen // 当前代际——新 source 和 onended 都用这个值校验
+    const gen = this.playGen
 
     this.source = this.ctx.createBufferSource()
     this.source.buffer = this.buffer
-    this.source.connect(this.analyser!) // source → analyser → [EQ] → gain → dest
+    this.source.connect(this.analyser!)
     this.gainNode!.gain.value = this.volume
 
     this.source.onended = () => {
-      // gen 不匹配 = 期间有过 stopSource() = 被人工中止，非自然结束
       if (gen !== this.playGen) return
       if (this.state === 'playing') {
         this.setState('idle')
@@ -176,14 +246,31 @@ export class AudioEngine {
 
     this.source.start(0, this.pausedAt)
     this.startedAt = this.ctx.currentTime - this.pausedAt
+    this.setState('playing') // H1 fix: 移到 source.start() 之后
     this.log('play', { offset: this.pausedAt, gen })
     this.trackProgress()
   }
 
   pause(): void {
+    // H1 fix: 设置取消标记，阻断正在 await ensureContext() 的 play()
+    this.cancelRequested = true
     if (!this.source) return
+
+    // 30ms 淡出防止咔嗒声
+    if (this.ctx && this.gainNode) {
+      const now = this.ctx.currentTime
+      this.gainNode.gain.setValueAtTime(this.volume, now)
+      this.gainNode.gain.linearRampToValueAtTime(0, now + 0.03)
+    }
+
     this.pausedAt = this.ctx!.currentTime - this.startedAt
-    this.stopSource() // playGen++ 使旧 onended 失效
+    this.stopSource()
+
+    // 恢复增益值 (下一次 play() 会设置正确的音量)
+    if (this.gainNode) {
+      this.gainNode.gain.value = this.volume
+    }
+
     this.setState('paused')
     this.log('pause', { position: this.pausedAt })
   }
@@ -197,6 +284,13 @@ export class AudioEngine {
     this.pausedAt = Math.max(0, Math.min(time, this.songDuration))
     this.listener?.onTimeUpdate(this.pausedAt, this.songDuration)
     if (this.state === 'playing') {
+      // 30ms 淡出防止咔嗒声
+      if (this.ctx && this.gainNode) {
+        const now = this.ctx.currentTime
+        this.gainNode.gain.setValueAtTime(this.volume, now)
+        this.gainNode.gain.linearRampToValueAtTime(0, now + 0.03)
+        await new Promise(r => setTimeout(r, 35))
+      }
       this.stopSource()
       await this.play()
     }
@@ -206,7 +300,10 @@ export class AudioEngine {
 
   setVolume(vol: number): void {
     this.volume = Math.max(0, Math.min(1, vol))
-    if (this.gainNode) this.gainNode.gain.value = this.volume
+    // 使用 setTargetAtTime 做斜坡, 消除阶跃咔嗒声
+    if (this.gainNode && this.ctx) {
+      this.gainNode.gain.setTargetAtTime(this.volume, this.ctx.currentTime, 0.01)
+    }
   }
 
   // ======  进度 ======

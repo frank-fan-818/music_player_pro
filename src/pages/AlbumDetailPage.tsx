@@ -3,14 +3,14 @@ import { useState, useEffect } from 'react'
 import { songService } from '../db/songService'
 import { useAudioStore } from '../stores/audioStore'
 import SongList from '../components/SongList'
-import type { Song } from '../types'
+import type { SongMeta } from '../types'
 
 export default function AlbumDetailPage() {
   const { name } = useParams<{ name: string }>()
   const navigate = useNavigate()
   const { requestPlay } = useAudioStore()
   const albumName = decodeURIComponent(name || '')
-  const [songs, setSongs] = useState<Song[]>([])
+  const [songs, setSongs] = useState<SongMeta[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {

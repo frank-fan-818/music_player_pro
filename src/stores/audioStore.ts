@@ -1,8 +1,12 @@
 /**
- * 播放器状态 Store (第7周: 播放工作流的中央控制器)
+ * 播放器状态 Store (v4.1)
  *
  * 控制流程: play → load → engine.play → onTrackEnd → next/stop
- * 自动连播: 顺序/循环/随机/单曲循嬢
+ * 自动连播: 顺序/循环/随机/单曲循环
+ *
+ * v4.1 修复:
+ *   - C1: 实现 shuffle 随机播放逻辑
+ *   - H4: onTrackEnd 中 loadAndPlay 添加 try-catch, 防止卡死在 loading 状态
  */
 import { create } from 'zustand'
 import { audioEngine } from '../engine/audioEngine'
@@ -22,7 +26,7 @@ interface AudioStore {
   queue: string[] // songIds
   queueIndex: number
 
-  // 操作 (第7周: 人机分工 - 全部由代码控制, 无LLM节点)
+  // 操作
   requestPlay: (songId: string, queue?: string[], startIndex?: number) => Promise<void>
   requestToggle: () => void
   requestNext: () => void
@@ -35,9 +39,22 @@ interface AudioStore {
   clearQueue: () => void
 }
 
+/** Fisher-Yates 洗牌, 返回新数组 */
+function shuffleArray<T>(arr: T[]): T[] {
+  const a = [...arr]
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[a[i], a[j]] = [a[j], a[i]]
+  }
+  return a
+}
+
 export const useAudioStore = create<AudioStore>((set, get) => {
   // 引擎事件绑定 (只绑定一次)
   let engineBound = false
+  // v4.1: shuffle 专用的随机队列 (独立于原始 queue)
+  let shuffledQueue: string[] = []
+  let shuffledIndex = 0
 
   function bindEngine() {
     if (engineBound) return
@@ -51,30 +68,30 @@ export const useAudioStore = create<AudioStore>((set, get) => {
         set({ currentTime, duration })
       },
       async onTrackEnd() {
-        // 自动连播逻辑 (第7周: Pipeline ended 事件 → 检查队列)
         const { playMode, queue, queueIndex } = get()
-        const loadAndPlay = async (id: string, idx: number) => {
-          const song = await songService.getById(id)
-          if (song) {
-            set({ queueIndex: idx, currentSong: song })
-            await audioEngine.load(id)
-            await audioEngine.play(get().volume)
+
+        // C1 fix: shuffle 模式使用随机队列
+        if (playMode === 'shuffle') {
+          shuffledIndex++
+          if (shuffledIndex >= shuffledQueue.length) {
+            // 随机队列播完 → 重新洗牌
+            shuffledQueue = shuffleArray(queue)
+            shuffledIndex = 0
           }
+          const nextId = shuffledQueue[shuffledIndex]
+          await loadAndPlay(nextId, queue.indexOf(nextId))
+          return
         }
 
         if (playMode === 'repeat-one') {
-          // 单曲循环: 从头重播
           audioEngine.seek(0)
           await audioEngine.play(get().volume)
         } else if (queueIndex < queue.length - 1) {
-          // 有下一首 → 自动切歌
           const nextIdx = queueIndex + 1
-          loadAndPlay(queue[nextIdx], nextIdx)
+          await loadAndPlay(queue[nextIdx], nextIdx)
         } else if (playMode === 'repeat-list' && queue.length > 0) {
-          // 列表循环: 回到第一首
-          loadAndPlay(queue[0], 0)
+          await loadAndPlay(queue[0], 0)
         }
-        // 顺序模式播完末尾 → 停止 (natural end)
       },
       onError(error) {
         console.error('[AudioEngine]', error)
@@ -84,6 +101,26 @@ export const useAudioStore = create<AudioStore>((set, get) => {
         set({ loadingPhase: phase })
       },
     })
+  }
+
+  // H4 fix: loadAndPlay 带错误处理, 加载失败自动跳过到下一首
+  async function loadAndPlay(id: string, idx: number) {
+    try {
+      const song = await songService.getById(id)
+      if (!song) throw new Error('Song not found')
+      set({ queueIndex: idx, currentSong: song })
+      await audioEngine.load(id)
+      await audioEngine.play(get().volume)
+    } catch (e: any) {
+      console.error('[AudioStore] loadAndPlay failed:', e.message)
+      set({ isLoading: false })
+      // 加载失败 → 尝试自动跳到下一首 (不卡死在 loading)
+      const { playMode, queue, queueIndex } = get()
+      const nextIdx = queueIndex + 1
+      if (nextIdx < queue.length) {
+        loadAndPlay(queue[nextIdx], nextIdx)
+      }
+    }
   }
 
   bindEngine()
@@ -107,6 +144,12 @@ export const useAudioStore = create<AudioStore>((set, get) => {
       set({ currentSong: song, isLoading: true })
       if (queue) {
         set({ queue, queueIndex: startIndex ?? queue.indexOf(songId) })
+        // C1 fix: shuffle 模式初始化随机队列
+        if (get().playMode === 'shuffle') {
+          shuffledQueue = shuffleArray(queue)
+          shuffledIndex = shuffledQueue.indexOf(songId)
+          if (shuffledIndex < 0) shuffledIndex = 0
+        }
       }
       try {
         await audioEngine.load(songId)
@@ -121,12 +164,25 @@ export const useAudioStore = create<AudioStore>((set, get) => {
       if (state === 'playing') {
         audioEngine.pause()
       } else if (state === 'paused') {
-        audioEngine.resume() // Promise ignored - state updates via listener
+        audioEngine.resume()
       }
     },
 
     requestNext() {
       const { queue, queueIndex, playMode } = get()
+
+      // C1 fix: shuffle 模式
+      if (playMode === 'shuffle') {
+        shuffledIndex++
+        if (shuffledIndex >= shuffledQueue.length) {
+          shuffledQueue = shuffleArray(queue)
+          shuffledIndex = 0
+        }
+        const nextId = shuffledQueue[shuffledIndex]
+        get().requestPlay(nextId, queue, queue.indexOf(nextId))
+        return
+      }
+
       let nextIdx = queueIndex + 1
       if (nextIdx >= queue.length) {
         nextIdx = playMode === 'repeat-list' ? 0 : -1
@@ -137,12 +193,20 @@ export const useAudioStore = create<AudioStore>((set, get) => {
     },
 
     requestPrevious() {
-      const { queue, queueIndex } = get()
-      // 如果播放超过3秒, 回到当前歌曲开头
+      const { queue, queueIndex, playMode } = get()
       if (get().currentTime > 3) {
         audioEngine.seek(0)
         return
       }
+
+      // C1 fix: shuffle 模式下回到随机队列中的上一首
+      if (playMode === 'shuffle') {
+        shuffledIndex = Math.max(0, shuffledIndex - 1)
+        const prevId = shuffledQueue[shuffledIndex]
+        get().requestPlay(prevId, queue, queue.indexOf(prevId))
+        return
+      }
+
       const prevIdx = queueIndex - 1
       if (prevIdx >= 0) {
         get().requestPlay(queue[prevIdx], queue, prevIdx)
@@ -159,7 +223,20 @@ export const useAudioStore = create<AudioStore>((set, get) => {
     },
 
     setPlayMode(mode) {
+      const prev = get().playMode
       set({ playMode: mode })
+      // C1 fix: 切换到 shuffle 时初始化随机队列
+      if (mode === 'shuffle' && prev !== 'shuffle') {
+        const { queue, queueIndex } = get()
+        shuffledQueue = shuffleArray(queue)
+        // 保持当前播放位置在随机队列中
+        if (queueIndex >= 0 && queueIndex < queue.length) {
+          shuffledIndex = shuffledQueue.indexOf(queue[queueIndex])
+          if (shuffledIndex < 0) shuffledIndex = 0
+        } else {
+          shuffledIndex = 0
+        }
+      }
     },
 
     addToQueue(songId) {
@@ -180,6 +257,8 @@ export const useAudioStore = create<AudioStore>((set, get) => {
 
     clearQueue() {
       set({ queue: [], queueIndex: -1 })
+      shuffledQueue = []
+      shuffledIndex = 0
     },
   }
 })

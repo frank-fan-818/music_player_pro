@@ -1,9 +1,13 @@
 /**
- * 歌曲服务层 (第6周: 契约实现)
- * 按 SongServiceContract 接口实现 IndexedDB CRUD + ID3解析 + 导入工作流
+ * 歌曲服务层 v2
+ *
+ * v2 变更:
+ *   - C3 fix: audioData 分离到 songAudio 表, 列表查询不再加载 Blob
+ *   - H3 fix: 导入前 navigator.storage.estimate() 配额检查
+ *   - H5 fix: delete/deleteMany 使用 Dexie transaction 保证原子性
  */
 import { db } from './schema'
-import type { Song, ArtistGroup, AlbumGroup, ImportTask } from '../types'
+import type { Song, SongMeta, ArtistGroup, AlbumGroup, ImportTask } from '../types'
 import { v4 as uuid } from '../utils/uuid'
 import { parseMetadata } from '../utils/id3Parser'
 
@@ -13,7 +17,7 @@ function splitArtistNames(raw: string): string[] {
   return raw.split(/\s*[/;&]\s*/).filter(Boolean)
 }
 
-// === 音频时长探测 (Web Audio API 解码获取) ===
+// === 音频时长探测 (仅用于导入时的回退 — 优先从元数据读取) ===
 async function detectDuration(audioData: ArrayBuffer): Promise<number> {
   const ctx = new AudioContext()
   try {
@@ -26,8 +30,7 @@ async function detectDuration(audioData: ArrayBuffer): Promise<number> {
   }
 }
 
-// === 导入工作流 (第7周: Pipeline 模式) ===
-// 步骤: format_check → id3_parse → duration_detect → db_write → artist_refresh
+// === 导入工作流 (Pipeline 模式) ===
 async function importOneFile(
   file: File,
   task: ImportTask,
@@ -41,7 +44,7 @@ async function importOneFile(
   }
 
   try {
-    // Step 1: 格式校验 (代码控制)
+    // Step 1: 格式校验
     updateTask('format_check')
     const ext = file.name.split('.').pop()?.toLowerCase()
     if (!ext || !['mp3', 'm4a', 'flac', 'wav', 'ogg'].includes(ext)) {
@@ -49,7 +52,7 @@ async function importOneFile(
       return null
     }
 
-    // Step 2: ID3 解析 (代码控制, jsmediatags库)
+    // Step 2: ID3 解析
     updateTask('id3_parse')
     const metadata = await parseMetadata(file)
 
@@ -57,20 +60,22 @@ async function importOneFile(
     const audioBuffer = await file.arrayBuffer()
     const audioBlob = new Blob([audioBuffer], { type: file.type || 'audio/mpeg' })
 
-    // Step 4: 时长探测 (Web Audio API)
+    // Step 4: 时长探测 (Web Audio API, 不依赖 ID3 元数据)
     updateTask('duration_detect')
     const duration = await detectDuration(audioBuffer)
 
-    // Step 5: 写入数据库 (代码控制)
+    // Step 5: 写入数据库
     updateTask('db_write')
-    const song: Song = {
-      id: uuid(),
+    const id = uuid()
+
+    // C3 fix: audioData 写入独立的 songAudio 表
+    const songEntry: SongMeta = {
+      id,
       title: metadata.title,
       artist: metadata.artist,
       album: metadata.album,
       coverArt: metadata.coverArt,
       lyrics: metadata.lyrics || externalLyrics || null,
-      audioData: audioBlob,
       duration,
       fileSize: file.size,
       format: ext,
@@ -81,32 +86,43 @@ async function importOneFile(
       importedAt: Date.now(),
     }
 
-    await db.songs.put(song)
-    return song
+    // H5 fix: 事务写入 — songs + songAudio 原子操作
+    await db.transaction('rw', db.songs, db.songAudio, async () => {
+      await db.songs.put(songEntry)
+      await db.songAudio.put({ id, audioData: audioBlob })
+    })
+
+    return { ...songEntry, audioData: audioBlob }
   } catch (err: any) {
     updateTask(task.currentStep, err.message || '导入失败')
     return null
   }
 }
 
-// === 导出服务(SongServiceContract 实现) ===
+// === 导出服务 ===
 export const songService = {
-  async getAll(): Promise<Song[]> {
+  /** 获取所有歌曲元信息 (不含音频数据, C3 fix) */
+  async getAll(): Promise<SongMeta[]> {
     return db.songs.orderBy('importedAt').reverse().toArray()
   },
 
+  /** 获取单首歌曲 (含音频数据, 用于播放) */
   async getById(id: string): Promise<Song | undefined> {
-    return db.songs.get(id)
+    const meta = await db.songs.get(id)
+    if (!meta) return undefined
+    // C3 fix: 仅在此处加载音频 Blob
+    const audio = await db.songAudio.get(id)
+    return { ...meta, audioData: audio?.audioData || new Blob() }
   },
 
-  async getByArtist(artist: string): Promise<Song[]> {
-    // 按拆分后的歌手名筛选 (IndexedDB 只支持精确索引，多歌手需内存过滤)
+  async getByArtist(artist: string): Promise<SongMeta[]> {
     const all = await db.songs.toArray()
     return all.filter((s) => splitArtistNames(s.artist).includes(artist))
   },
 
-  async getFavorites(): Promise<Song[]> {
-    return db.songs.where('isFavorite').equals(1).toArray()
+  async getFavorites(): Promise<SongMeta[]> {
+    const all = await db.songs.toArray()
+    return all.filter((s) => s.isFavorite)
   },
 
   async importFiles(
@@ -114,7 +130,7 @@ export const songService = {
     onProgress?: (current: number, total: number, fileName: string) => void
   ): Promise<Song[]> {
     // 分离 .lrc 文件和音频文件，按 basename 匹配
-    const lrcFiles = new Map<string, string>() // basename → lrc content
+    const lrcFiles = new Map<string, string>()
     const audioFiles: File[] = []
     for (const f of files) {
       if (f.name.endsWith('.lrc')) {
@@ -132,21 +148,14 @@ export const songService = {
       let matched = 0
 
       for (const [base, text] of lrcFiles) {
-        // 多策略匹配: 精确 → 包含 → 去前缀
         const song = allSongs.find((s) => {
           const t = s.title.toLowerCase()
           const b = base.toLowerCase()
-          // 精确匹配
           if (t === b) return true
-          // 歌名以文件名开头
           if (t.startsWith(b)) return true
-          // 文件名以歌名开头
           if (b.startsWith(t)) return true
-          // 文件名包含歌名 (LRC文件名常有 "Artist - Title.lrc")
           if (b.includes(t) && t.length > 2) return true
-          // 歌名包含文件名
           if (t.includes(b) && b.length > 2) return true
-          // 去掉 "Artist - " 前缀再匹配
           const afterDash = b.replace(/^.*?\s*[-–—]\s*/, '')
           if (afterDash && t === afterDash) return true
           if (afterDash && t.startsWith(afterDash)) return true
@@ -159,7 +168,37 @@ export const songService = {
       }
 
       console.log(`[lrc] matched ${matched} / ${lrcFiles.size} files`)
-      return allSongs.filter((s) => s.lyrics)
+      return allSongs.filter((s) => s.lyrics).map((s) => {
+        // 返回 SongMeta[], 不含 audioData (此路径无需播放)
+        return s as Song
+      })
+    }
+
+    // H3 fix: 导入前检查存储配额
+    if (audioFiles.length > 0) {
+      const totalBytes = audioFiles.reduce((sum, f) => sum + f.size, 0)
+      try {
+        const estimate = await navigator.storage?.estimate()
+        if (estimate) {
+          const available = estimate.quota! - estimate.usage!
+          // 保留 50MB 最小缓冲
+          if (totalBytes > available - 50 * 1024 * 1024) {
+            throw new Error(`存储空间不足! 需要 ${(totalBytes / 1024 / 1024).toFixed(0)}MB, 可用 ${(available / 1024 / 1024).toFixed(0)}MB`)
+          }
+        }
+      } catch (e: any) {
+        // storage.estimate() 不可用时跳过检查, 但配额错误仍然抛出
+        if (e.message?.includes('存储空间不足')) throw e
+      }
+
+      // H3 fix: 检查 IndexedDB 是否可写
+      try {
+        const testKey = `__quota_test__${Date.now()}`
+        await db.songAudio.put({ id: testKey, audioData: new Blob(['test']) })
+        await db.songAudio.delete(testKey)
+      } catch {
+        throw new Error('存储空间不足，请清理后重试')
+      }
     }
 
     const task: ImportTask = {
@@ -190,23 +229,10 @@ export const songService = {
     return imported
   },
 
+  /** H5 fix: 原子事务 — 清理歌单引用然后删除歌曲及音频 */
   async delete(id: string): Promise<void> {
-    // 删除歌曲时同步清理歌单中的引用
-    const playlists = await db.playlists.toArray()
-    for (const pl of playlists) {
-      if (pl.songIds.includes(id)) {
-        await db.playlists.update(pl.id, {
-          songIds: pl.songIds.filter((sid) => sid !== id),
-          updatedAt: Date.now(),
-        })
-      }
-    }
-    await db.songs.delete(id)
-  },
-
-  async deleteMany(ids: string[]): Promise<void> {
-    const playlists = await db.playlists.toArray()
-    for (const id of ids) {
+    await db.transaction('rw', db.songs, db.songAudio, db.playlists, async () => {
+      const playlists = await db.playlists.toArray()
       for (const pl of playlists) {
         if (pl.songIds.includes(id)) {
           await db.playlists.update(pl.id, {
@@ -215,8 +241,28 @@ export const songService = {
           })
         }
       }
-    }
-    await db.songs.bulkDelete(ids)
+      await db.songs.delete(id)
+      await db.songAudio.delete(id)
+    })
+  },
+
+  /** H5 fix: 批量删除 — 原子事务 */
+  async deleteMany(ids: string[]): Promise<void> {
+    await db.transaction('rw', db.songs, db.songAudio, db.playlists, async () => {
+      const playlists = await db.playlists.toArray()
+      for (const id of ids) {
+        for (const pl of playlists) {
+          if (pl.songIds.includes(id)) {
+            await db.playlists.update(pl.id, {
+              songIds: pl.songIds.filter((sid) => sid !== id),
+              updatedAt: Date.now(),
+            })
+          }
+        }
+      }
+      await db.songs.bulkDelete(ids)
+      await db.songAudio.bulkDelete(ids)
+    })
   },
 
   async toggleFavorite(id: string): Promise<void> {
@@ -230,7 +276,6 @@ export const songService = {
     const songs = await db.songs.toArray()
     const map = new Map<string, { count: number; cover: string | null }>()
     for (const s of songs) {
-      // 拆分多歌手: "A / B" → ["A", "B"], "A;B" → ["A", "B"]
       const names = splitArtistNames(s.artist)
       for (const name of names) {
         const trimmed = name.trim()
@@ -267,7 +312,7 @@ export const songService = {
       .map(([name, data]) => ({ name, artist: data.artist, songCount: data.count, coverArt: data.cover }))
   },
 
-  async getByAlbum(album: string): Promise<Song[]> {
+  async getByAlbum(album: string): Promise<SongMeta[]> {
     const all = await db.songs.toArray()
     return all.filter((s) => s.album === album)
   },

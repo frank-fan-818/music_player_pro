@@ -69,6 +69,7 @@ function parseId3v1(bytes: Uint8Array, fb: SongMetadata): SongMetadata {
     artist: decode(33, 30, fb.artist),
     album: decode(63, 30, fb.album),
     coverArt: null,
+    lyrics: null,
     trackNumber: bytes[126] === 0 ? (bytes[127] || 0) : 0,
   }
 }

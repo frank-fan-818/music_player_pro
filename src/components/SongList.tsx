@@ -2,10 +2,10 @@ import { useState, useRef, useEffect } from 'react'
 import { useLibraryStore } from '../stores/libraryStore'
 import { usePlaylistStore } from '../stores/playlistStore'
 import CoverImage from './CoverImage'
-import type { Song } from '../types'
+import type { SongMeta } from '../types'
 
 interface Props {
-  songs: Song[]
+  songs: SongMeta[]
   showArtist?: boolean
   showAlbum?: boolean
   /** 如果在歌单详情页内，传入歌单ID，菜单会显示"从歌单移除"而非"添加到歌单" */
@@ -16,7 +16,7 @@ interface Props {
 export default function SongList({ songs, showArtist = true, showAlbum = false, contextPlaylistId, onPlay }: Props) {
   const { toggleFavorite, deleteSong } = useLibraryStore()
   const { playlists, addSong, removeSong } = usePlaylistStore()
-  const [menuTarget, setMenuTarget] = useState<{ song: Song; x: number; y: number } | null>(null)
+  const [menuTarget, setMenuTarget] = useState<{ song: SongMeta; x: number; y: number } | null>(null)
   const [showPlaylistPicker, setShowPlaylistPicker] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -28,7 +28,7 @@ export default function SongList({ songs, showArtist = true, showAlbum = false, 
     }
   }, [menuTarget])
 
-  const handleContextMenu = (e: React.MouseEvent, song: Song) => {
+  const handleContextMenu = (e: React.MouseEvent, song: SongMeta) => {
     e.preventDefault()
     const x = Math.min(e.clientX, window.innerWidth - 180)
     const y = Math.min(e.clientY, window.innerHeight - 280)

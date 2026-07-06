@@ -1,24 +1,27 @@
 /**
- * 曲库状态 Store
- * 管理: 歌曲列表、歌手分组、导入/删除/收藏操作、最近播放
+ * 曲库状态 Store (v2)
+ * 管理: 歌曲列表(SongMeta[])、歌手分组、导入/删除/收藏操作、最近播放
+ *
+ * v2 变更: songs 数组使用 SongMeta (不含 audioData), 解决 C3 内存问题
  */
 import { create } from 'zustand'
 import { songService } from '../db/songService'
 import { useAudioStore } from './audioStore'
-import type { Song, ArtistGroup, AlbumGroup } from '../types'
+import type { Song, SongMeta, ArtistGroup, AlbumGroup } from '../types'
 
 interface LibraryStore {
-  songs: Song[]
+  songs: SongMeta[]
   artists: ArtistGroup[]
   albums: AlbumGroup[]
   recentIds: string[]
   loading: boolean
 
   loadLibrary: () => Promise<void>
-  importFiles: (files: File[]) => Promise<Song[]>
+  importFiles: (files: File[], onProgress?: (current: number, total: number, fileName: string) => void) => Promise<Song[]>
   deleteSong: (id: string) => Promise<void>
   deleteSongs: (ids: string[]) => Promise<void>
   toggleFavorite: (id: string) => Promise<void>
+  updateLyrics: (id: string, lyrics: string) => Promise<void>
   addToRecent: (id: string) => void
 }
 
@@ -39,7 +42,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     set({ songs, artists, albums, loading: false })
   },
 
-  async importFiles(files, onProgress?: (current: number, total: number, fileName: string) => void) {
+  async importFiles(files, onProgress) {
     set({ loading: true })
     const imported = await songService.importFiles(files, onProgress)
     await get().loadLibrary()
@@ -48,7 +51,8 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     if (cs) {
       const updated = get().songs.find((s) => s.id === cs.id)
       if (updated && updated.lyrics !== cs.lyrics) {
-        useAudioStore.setState({ currentSong: updated })
+        // 合并歌词更新到 currentSong (保留 audioData)
+        useAudioStore.setState({ currentSong: { ...cs, lyrics: updated.lyrics } })
       }
     }
     return imported
@@ -70,10 +74,12 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
       const updated = s.songs.map((song) =>
         song.id === id ? { ...song, isFavorite: !song.isFavorite } : song
       )
-      // 同步 audioStore 的 currentSong (修复收藏按钮 UI 不更新)
       const toggled = updated.find((song) => song.id === id)
       if (toggled) {
-        useAudioStore.setState({ currentSong: toggled })
+        const cs = useAudioStore.getState().currentSong
+        if (cs) {
+          useAudioStore.setState({ currentSong: { ...cs, isFavorite: toggled.isFavorite } })
+        }
       }
       return { songs: updated }
     })
@@ -84,7 +90,6 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     set((s) => ({
       songs: s.songs.map((song) => song.id === id ? { ...song, lyrics } : song),
     }))
-    // 同步 audioStore
     const st = useAudioStore.getState()
     if (st.currentSong?.id === id) {
       useAudioStore.setState({ currentSong: { ...st.currentSong, lyrics } })
