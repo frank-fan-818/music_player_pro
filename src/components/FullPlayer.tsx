@@ -127,10 +127,37 @@ export default function FullPlayer({ isOpen, onClose }: Props) {
 
   const PlayModeSvg = () => {
     const cls = "w-[18px] h-[18px]"
-    if (playMode === 'repeat-one') return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={cls}><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zM17 17H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/><text x="12" y="15" textAnchor="middle" fontSize="7" fill="currentColor" stroke="none">1</text></svg>
-    if (playMode === 'repeat-list') return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={cls}><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zM17 17H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
-    if (playMode === 'shuffle') return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={cls}><path d="M16 3h5v5M21 3l-6.5 6.5M8 8l-5 5 5 5M21 13l-5 5"/></svg>
-    return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={cls}><polygon points="8,4 18,12 8,20"/></svg>
+    if (playMode === 'repeat-one') return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={cls}>
+        <polyline points="17 1 21 5 17 9" />
+        <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+        <polyline points="7 23 3 19 7 15" />
+        <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+        <text x="11.5" y="15.5" textAnchor="middle" fontSize="8" fontWeight="700" fill="currentColor" stroke="none">1</text>
+      </svg>
+    )
+    if (playMode === 'repeat-list') return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={cls}>
+        <polyline points="17 1 21 5 17 9" />
+        <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+        <polyline points="7 23 3 19 7 15" />
+        <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+      </svg>
+    )
+    if (playMode === 'shuffle') return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={cls}>
+        <polyline points="16 3 21 3 21 8" />
+        <line x1="4" y1="20" x2="21" y2="3" />
+        <polyline points="21 16 21 21 16 21" />
+        <line x1="15" y1="15" x2="21" y2="21" />
+        <line x1="4" y1="4" x2="9" y2="9" />
+      </svg>
+    )
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={cls}>
+        <polygon points="5 3 19 12 5 21" />
+      </svg>
+    )
   }
 
   const isFav = currentSong.isFavorite
@@ -400,13 +427,19 @@ export default function FullPlayer({ isOpen, onClose }: Props) {
 
         {/* controls */}
         <div className="flex items-center justify-center gap-5 px-8 mb-4">
-          {/* play mode */}
-          <button onClick={() => {
-            const modes: typeof playMode[] = ['sequential', 'repeat-list', 'repeat-one', 'shuffle']
-            setPlayMode(modes[(modes.indexOf(playMode) + 1) % modes.length])
-          }} className="w-9 h-9 flex items-center justify-center text-text-muted hover:text-gold-400 transition-colors">
-            <PlayModeSvg />
-          </button>
+          {/* play mode — with hover tooltip */}
+          <div className="relative group">
+            <button onClick={() => {
+              const modes: typeof playMode[] = ['sequential', 'repeat-list', 'repeat-one', 'shuffle']
+              setPlayMode(modes[(modes.indexOf(playMode) + 1) % modes.length])
+            }} className="w-9 h-9 flex items-center justify-center text-text-muted group-hover:text-gold-400 transition-colors">
+              <PlayModeSvg />
+            </button>
+            {/* tooltip */}
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2.5 py-1 rounded-lg bg-obsidian-700/95 backdrop-blur-md ring-1 ring-white/[0.06] text-[10px] font-medium text-text-primary whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none shadow-xl">
+              {playModeLabel[playMode]}
+            </div>
+          </div>
 
           {/* prev */}
           <button onClick={requestPrevious} className="w-10 h-10 flex items-center justify-center text-text-primary hover:text-gold-400 transition-colors">
