@@ -1,10 +1,8 @@
 import { useNavigate } from 'react-router-dom'
 import { useLibraryStore } from '../stores/libraryStore'
-import { useAudioStore } from '../stores/audioStore'
 
 export default function ArtistsPage() {
-  const { artists, songs } = useLibraryStore()
-  const { requestPlay } = useAudioStore()
+  const { artists } = useLibraryStore()
   const navigate = useNavigate()
 
   const sorted = [...artists].sort((a, b) => a.name.localeCompare(b.name, 'zh'))
@@ -27,11 +25,7 @@ export default function ArtistsPage() {
           {sorted.map((artist) => (
             <div key={artist.name}
               className="flex items-center gap-4 py-3.5 px-2 rounded-xl hover:bg-white/[0.02] cursor-pointer active:scale-[0.98] transition-all group"
-              onClick={() => {
-                const artistSongs = songs.filter((s) => s.artist.split(/\s*[/;&]\s*/).some((a) => a === artist.name))
-                if (artistSongs.length > 0) requestPlay(artistSongs[0].id, artistSongs.map((s) => s.id), 0)
-                navigate(`/artists/${encodeURIComponent(artist.name)}`)
-              }}>
+              onClick={() => navigate(`/artists/${encodeURIComponent(artist.name)}`)}>
               <div className="w-[52px] h-[52px] rounded-full overflow-hidden flex-shrink-0 shadow-xl shadow-black/40 ring-1 ring-white/[0.04]">
                 {artist.coverArt ? (
                   <img src={artist.coverArt} alt={artist.name} className="w-full h-full object-cover" />
