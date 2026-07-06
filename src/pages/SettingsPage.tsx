@@ -1,29 +1,36 @@
-import { useSettingsStore } from '../stores/settingsStore'
+import { useSettingsStore, EQ_PRESETS } from '../stores/settingsStore'
 import { audioEngine } from '../engine/audioEngine'
 
 const bandLabels = ['60 Hz', '250 Hz', '1 kHz', '4 kHz', '16 kHz']
 
 export default function SettingsPage() {
-  const { visualizerEnabled, eqEnabled, eqBands, toggleVisualizer, toggleEQ, setEQBand, resetEQ } =
-    useSettingsStore()
+  const {
+    visualizerEnabled, eqEnabled, eqBands, activePreset,
+    toggleVisualizer, toggleEQ, setEQBand, applyPreset, resetEQ,
+  } = useSettingsStore()
 
   const handleEQToggle = () => {
     toggleEQ()
-    if (!eqEnabled) {
-      // 开启 EQ 时构建滤波链
-      audioEngine.buildEQChain(eqBands)
+    const { eqEnabled: nowOn, eqBands: bands } = useSettingsStore.getState()
+    if (!nowOn) {
+      // 刚关闭 EQ → 使用直通链
+      audioEngine.buildEQChain(bands.map((b) => ({ ...b, gain: 0 })))
     } else {
-      // 关闭 EQ 时重建直通链（gain 全部为 0）
-      audioEngine.buildEQChain(eqBands.map((b) => ({ ...b, gain: 0 })))
+      // 刚开启 EQ → 构建当前频段链
+      audioEngine.buildEQChain(bands)
     }
   }
 
   const handleBandChange = (index: number, value: number) => {
     setEQBand(index, value)
-    // 实时更新引擎
-    const bands = [...eqBands]
-    bands[index] = { ...bands[index], gain: value }
-    audioEngine.buildEQChain(eqEnabled ? bands : bands.map((b) => ({ ...b, gain: 0 })))
+    const { eqEnabled: on, eqBands: bands } = useSettingsStore.getState()
+    audioEngine.buildEQChain(on ? bands : bands.map((b) => ({ ...b, gain: 0 })))
+  }
+
+  const handlePreset = (preset: typeof EQ_PRESETS[number]) => {
+    applyPreset(preset)
+    const { eqBands: bands, eqEnabled: on } = useSettingsStore.getState()
+    audioEngine.buildEQChain(on ? bands : bands.map((b) => ({ ...b, gain: 0 })))
   }
 
   return (
@@ -52,12 +59,12 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* EQ 开关 */}
+      {/* EQ 均衡器 */}
       <div className="glass rounded-2xl p-4 mb-4">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-semibold text-text-primary">均衡器 (EQ)</h3>
-            <p className="text-[11px] text-text-muted mt-0.5">5 段频率增益调节</p>
+            <p className="text-[11px] text-text-muted mt-0.5">5 段频率调节 · 预设音效一键切换</p>
           </div>
           <button
             onClick={handleEQToggle}
@@ -73,8 +80,35 @@ export default function SettingsPage() {
           </button>
         </div>
 
+        {/* 预设音效 */}
+        {eqEnabled && (
+          <div className="mt-4 -mx-1">
+            <p className="text-[10px] text-text-muted uppercase tracking-wider mb-2 px-1">推荐音效</p>
+            <div className="flex flex-wrap gap-1.5">
+              {EQ_PRESETS.map((preset) => {
+                const isActive = activePreset === preset.id
+                return (
+                  <button
+                    key={preset.id}
+                    onClick={() => handlePreset(preset)}
+                    className={`px-3 py-1.5 rounded-full text-[11px] font-medium transition-all active:scale-95 ${
+                      isActive
+                        ? 'bg-gold-400/15 text-gold-400 ring-1 ring-gold-400/30'
+                        : 'bg-white/[0.04] text-text-secondary hover:bg-white/[0.06] hover:text-text-primary'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* 手动调节滑块 */}
         {eqEnabled && (
           <div className="mt-5 space-y-4">
+            <p className="text-[10px] text-text-muted uppercase tracking-wider">手动微调</p>
             {eqBands.map((band, i) => (
               <div key={band.freq} className="flex items-center gap-3">
                 <span className="text-[11px] text-text-muted w-12 tabular-nums font-medium">{bandLabels[i]}</span>
