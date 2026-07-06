@@ -1,7 +1,60 @@
 import { useSettingsStore, EQ_PRESETS } from '../stores/settingsStore'
+import type { EQPreset } from '../stores/settingsStore'
 import { audioEngine } from '../engine/audioEngine'
 
 const bandLabels = ['60 Hz', '250 Hz', '1 kHz', '4 kHz', '16 kHz']
+
+/** Mini EQ 曲线图标 — 5 根竖线对应 5 个频段的增益 */
+function MiniEQ({ preset, active }: { preset: EQPreset; active: boolean }) {
+  const maxGain = 12
+  const barW = 2.5
+  const gap = 3.5
+  const totalW = preset.bands.length * (barW + gap) - gap
+  const h = 18
+  const baseline = h - 2
+  const midY = baseline - 5
+
+  return (
+    <svg
+      viewBox={`0 0 ${totalW} ${h}`}
+      className="w-5 h-4 flex-shrink-0"
+      fill="none"
+    >
+      {preset.bands.map((band, i) => {
+        const x = i * (barW + gap)
+        // 增益 → 柱高度: 0dB = 5px (mid), +12dB = 14px, -12dB = 2px
+        const ratio = band.gain / maxGain
+        const barH = Math.max(2, 5 + ratio * 9)
+        const y = baseline - barH
+        const isPositive = band.gain >= 0
+        const isZero = band.gain === 0
+        return (
+          <rect
+            key={i}
+            x={x}
+            y={y}
+            width={barW}
+            height={barH}
+            rx="1.25"
+            fill={
+              active
+                ? isZero
+                  ? 'rgba(245,197,66,0.35)'
+                  : isPositive
+                    ? 'rgba(245,197,66,0.9)'
+                    : 'rgba(245,197,66,0.45)'
+                : isZero
+                  ? 'rgba(255,255,255,0.12)'
+                  : isPositive
+                    ? 'rgba(255,255,255,0.3)'
+                    : 'rgba(255,255,255,0.16)'
+            }
+          />
+        )
+      })}
+    </svg>
+  )
+}
 
 export default function SettingsPage() {
   const {
@@ -13,10 +66,8 @@ export default function SettingsPage() {
     toggleEQ()
     const { eqEnabled: nowOn, eqBands: bands } = useSettingsStore.getState()
     if (!nowOn) {
-      // 刚关闭 EQ → 使用直通链
       audioEngine.buildEQChain(bands.map((b) => ({ ...b, gain: 0 })))
     } else {
-      // 刚开启 EQ → 构建当前频段链
       audioEngine.buildEQChain(bands)
     }
   }
@@ -27,7 +78,7 @@ export default function SettingsPage() {
     audioEngine.buildEQChain(on ? bands : bands.map((b) => ({ ...b, gain: 0 })))
   }
 
-  const handlePreset = (preset: typeof EQ_PRESETS[number]) => {
+  const handlePreset = (preset: EQPreset) => {
     applyPreset(preset)
     const { eqBands: bands, eqEnabled: on } = useSettingsStore.getState()
     audioEngine.buildEQChain(on ? bands : bands.map((b) => ({ ...b, gain: 0 })))
@@ -82,22 +133,31 @@ export default function SettingsPage() {
 
         {/* 预设音效 */}
         {eqEnabled && (
-          <div className="mt-4 -mx-1">
-            <p className="text-[10px] text-text-muted uppercase tracking-wider mb-2 px-1">推荐音效</p>
-            <div className="flex flex-wrap gap-1.5">
+          <div className="mt-5">
+            <p className="text-[10px] font-semibold text-text-muted uppercase tracking-[0.15em] mb-3">
+              推荐音效
+            </p>
+            <div className="grid grid-cols-4 gap-2">
               {EQ_PRESETS.map((preset) => {
                 const isActive = activePreset === preset.id
                 return (
                   <button
                     key={preset.id}
                     onClick={() => handlePreset(preset)}
-                    className={`px-3 py-1.5 rounded-full text-[11px] font-medium transition-all active:scale-95 ${
+                    className={`flex flex-col items-center gap-1.5 py-2.5 px-1 rounded-xl transition-all duration-200 active:scale-95 ${
                       isActive
-                        ? 'bg-gold-400/15 text-gold-400 ring-1 ring-gold-400/30'
-                        : 'bg-white/[0.04] text-text-secondary hover:bg-white/[0.06] hover:text-text-primary'
+                        ? 'bg-gold-400/[0.08] ring-1 ring-gold-400/25 shadow-[0_0_12px_rgba(245,197,66,0.06)]'
+                        : 'hover:bg-white/[0.03] ring-1 ring-white/[0.04]'
                     }`}
                   >
-                    {preset.label}
+                    <MiniEQ preset={preset} active={isActive} />
+                    <span
+                      className={`text-[10px] font-semibold tracking-wide transition-colors duration-200 ${
+                        isActive ? 'text-gold-400' : 'text-text-muted'
+                      }`}
+                    >
+                      {preset.label}
+                    </span>
                   </button>
                 )
               })}
@@ -107,8 +167,10 @@ export default function SettingsPage() {
 
         {/* 手动调节滑块 */}
         {eqEnabled && (
-          <div className="mt-5 space-y-4">
-            <p className="text-[10px] text-text-muted uppercase tracking-wider">手动微调</p>
+          <div className="mt-6 space-y-4">
+            <p className="text-[10px] font-semibold text-text-muted uppercase tracking-[0.15em]">
+              手动微调{activePreset ? ' · 已自定义' : ''}
+            </p>
             {eqBands.map((band, i) => (
               <div key={band.freq} className="flex items-center gap-3">
                 <span className="text-[11px] text-text-muted w-12 tabular-nums font-medium">{bandLabels[i]}</span>
