@@ -103,13 +103,7 @@ export const EQ_PRESETS: EQPreset[] = [
   },
 ]
 
-const DEFAULT_EQ: EQBand[] = [
-  { freq: 60, gain: 0 },
-  { freq: 250, gain: 0 },
-  { freq: 1000, gain: 0 },
-  { freq: 4000, gain: 0 },
-  { freq: 16000, gain: 0 },
-]
+const DEFAULT_EQ: EQBand[] = EQ_PRESETS[0].bands.map((b) => ({ ...b }))
 
 interface SettingsStore {
   visualizerEnabled: boolean
@@ -148,7 +142,7 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
 
   applyPreset: (preset) =>
     set(() => {
-      const bands = preset.bands.map((b) => ({ freq: b.freq, gain: b.gain }))
+      const bands: EQBand[] = preset.bands.map((b) => ({ freq: b.freq, gain: b.gain }))
       saveEQToStorage(bands)
       saveStrToStorage('eq_preset', preset.id)
       saveBoolToStorage('eq_enabled', true)

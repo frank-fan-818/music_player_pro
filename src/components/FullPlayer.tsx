@@ -3,6 +3,51 @@ import { useAudioStore } from '../stores/audioStore'
 import { useLibraryStore } from '../stores/libraryStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import Visualizer from './Visualizer'
+import CoverImage from './CoverImage'
+import type { PlayMode, SongMeta } from '../types'
+
+// --- module-level constants ---
+
+const playModeLabel: Record<PlayMode, string> = {
+  'sequential': '顺序播放', 'repeat-list': '列表循环', 'repeat-one': '单曲循环', 'shuffle': '随机播放',
+}
+const PLAY_MODE_ORDER: PlayMode[] = ['sequential', 'repeat-list', 'repeat-one', 'shuffle']
+
+const MODE_ICON_CLS = "w-[18px] h-[18px]"
+
+function PlayModeIcon({ mode }: { mode: PlayMode }) {
+  if (mode === 'repeat-one') return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={MODE_ICON_CLS}>
+      <polyline points="17 1 21 5 17 9" />
+      <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+      <polyline points="7 23 3 19 7 15" />
+      <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+      <text x="11.5" y="15.5" textAnchor="middle" fontSize="8" fontWeight="700" fill="currentColor" stroke="none">1</text>
+    </svg>
+  )
+  if (mode === 'repeat-list') return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={MODE_ICON_CLS}>
+      <polyline points="17 1 21 5 17 9" />
+      <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+      <polyline points="7 23 3 19 7 15" />
+      <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+    </svg>
+  )
+  if (mode === 'shuffle') return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={MODE_ICON_CLS}>
+      <polyline points="16 3 21 3 21 8" />
+      <line x1="4" y1="20" x2="21" y2="3" />
+      <polyline points="21 16 21 21 16 21" />
+      <line x1="15" y1="15" x2="21" y2="21" />
+      <line x1="4" y1="4" x2="9" y2="9" />
+    </svg>
+  )
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={MODE_ICON_CLS}>
+      <polygon points="5 3 19 12 5 21" />
+    </svg>
+  )
+}
 
 interface Props {
   isOpen: boolean
@@ -121,44 +166,12 @@ export default function FullPlayer({ isOpen, onClose }: Props) {
     return `${m}:${s.toString().padStart(2, '0')}`
   }
 
-  const playModeLabel: Record<string, string> = {
-    'sequential': '顺序播放', 'repeat-one': '单曲循环', 'repeat-list': '列表循环', 'shuffle': '随机播放',
-  }
-
-  const PlayModeSvg = () => {
-    const cls = "w-[18px] h-[18px]"
-    if (playMode === 'repeat-one') return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={cls}>
-        <polyline points="17 1 21 5 17 9" />
-        <path d="M3 11V9a4 4 0 0 1 4-4h14" />
-        <polyline points="7 23 3 19 7 15" />
-        <path d="M21 13v2a4 4 0 0 1-4 4H3" />
-        <text x="11.5" y="15.5" textAnchor="middle" fontSize="8" fontWeight="700" fill="currentColor" stroke="none">1</text>
-      </svg>
-    )
-    if (playMode === 'repeat-list') return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={cls}>
-        <polyline points="17 1 21 5 17 9" />
-        <path d="M3 11V9a4 4 0 0 1 4-4h14" />
-        <polyline points="7 23 3 19 7 15" />
-        <path d="M21 13v2a4 4 0 0 1-4 4H3" />
-      </svg>
-    )
-    if (playMode === 'shuffle') return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={cls}>
-        <polyline points="16 3 21 3 21 8" />
-        <line x1="4" y1="20" x2="21" y2="3" />
-        <polyline points="21 16 21 21 16 21" />
-        <line x1="15" y1="15" x2="21" y2="21" />
-        <line x1="4" y1="4" x2="9" y2="9" />
-      </svg>
-    )
-    return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={cls}>
-        <polygon points="5 3 19 12 5 21" />
-      </svg>
-    )
-  }
+  // O(1) 歌曲查找 Map — 避免队列渲染时每次 O(N*M) find (Efficiency #1 fix)
+  const songsMap = useMemo(() => {
+    const m = new Map<string, SongMeta>()
+    for (const s of songs) m.set(s.id, s)
+    return m
+  }, [songs])
 
   const isFav = currentSong.isFavorite
 
@@ -371,7 +384,7 @@ export default function FullPlayer({ isOpen, onClose }: Props) {
 
             <div className="flex-1 overflow-y-auto px-3 pb-6 safe-bottom">
               {queue.map((sid, i) => {
-                const song = songs.find((s) => s.id === sid)
+                const song = songsMap.get(sid)
                 if (!song) return null
                 const isCurrent = i === queueIndex
                 return (
@@ -393,14 +406,8 @@ export default function FullPlayer({ isOpen, onClose }: Props) {
                       ) : (i + 1)}
                     </span>
 
-                    <div className="w-9 h-9 rounded-md overflow-hidden flex-shrink-0 bg-white/5">
-                      {song.coverArt ? (
-                        <img src={song.coverArt} alt={song.title} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full cover-placeholder flex items-center justify-center">
-                          <span className="text-[9px] font-bold text-white/[0.06]">{song.title.charAt(0)}</span>
-                        </div>
-                      )}
+                    <div className="w-9 h-9 rounded-md overflow-hidden flex-shrink-0">
+                      <CoverImage coverArt={song.coverArt} title={song.title} size="sm" />
                     </div>
 
                     <div className="flex-1 min-w-0">
@@ -430,10 +437,9 @@ export default function FullPlayer({ isOpen, onClose }: Props) {
           {/* play mode — with hover tooltip */}
           <div className="relative group">
             <button onClick={() => {
-              const modes: typeof playMode[] = ['sequential', 'repeat-list', 'repeat-one', 'shuffle']
-              setPlayMode(modes[(modes.indexOf(playMode) + 1) % modes.length])
+              setPlayMode(PLAY_MODE_ORDER[(PLAY_MODE_ORDER.indexOf(playMode) + 1) % PLAY_MODE_ORDER.length])
             }} className="w-9 h-9 flex items-center justify-center text-text-muted group-hover:text-gold-400 transition-colors">
-              <PlayModeSvg />
+              <PlayModeIcon mode={playMode} />
             </button>
             {/* tooltip */}
             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2.5 py-1 rounded-lg bg-obsidian-700/95 backdrop-blur-md ring-1 ring-white/[0.06] text-[10px] font-medium text-text-primary whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none shadow-xl">

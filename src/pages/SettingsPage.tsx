@@ -12,7 +12,6 @@ function MiniEQ({ preset, active }: { preset: EQPreset; active: boolean }) {
   const totalW = preset.bands.length * (barW + gap) - gap
   const h = 18
   const baseline = h - 2
-  const midY = baseline - 5
 
   return (
     <svg
@@ -74,14 +73,12 @@ export default function SettingsPage() {
 
   const handleBandChange = (index: number, value: number) => {
     setEQBand(index, value)
-    const { eqEnabled: on, eqBands: bands } = useSettingsStore.getState()
-    audioEngine.buildEQChain(on ? bands : bands.map((b) => ({ ...b, gain: 0 })))
+    audioEngine.buildEQChain(useSettingsStore.getState().eqBands)
   }
 
   const handlePreset = (preset: EQPreset) => {
     applyPreset(preset)
-    const { eqBands: bands, eqEnabled: on } = useSettingsStore.getState()
-    audioEngine.buildEQChain(on ? bands : bands.map((b) => ({ ...b, gain: 0 })))
+    audioEngine.buildEQChain(useSettingsStore.getState().eqBands)
   }
 
   return (
