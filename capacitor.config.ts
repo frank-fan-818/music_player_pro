@@ -5,7 +5,8 @@ const config: CapacitorConfig = {
   appName: 'MusicPlayer Pro',
   webDir: 'dist',
   server: {
-    androidScheme: 'https',
+    // http fine for local WebView assets
+    androidScheme: 'http',
   },
   android: {
     buildOptions: {

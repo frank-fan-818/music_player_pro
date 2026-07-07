@@ -213,6 +213,13 @@ export default function FullPlayer({ isOpen, onClose }: Props) {
     setDismissY(0)
   }
 
+  // O(1) 歌曲查找 Map — 避免队列渲染时每次 O(N*M) find (Efficiency #1 fix)
+  const songsMap = useMemo(() => {
+    const m = new Map<string, SongMeta>()
+    for (const s of songs) m.set(s.id, s)
+    return m
+  }, [songs])
+
   if (!isOpen || !currentSong) return null
 
   const displayProgress = dragPos !== null ? dragPos * 100 : duration > 0 ? (currentTime / duration) * 100 : 0
@@ -221,13 +228,6 @@ export default function FullPlayer({ isOpen, onClose }: Props) {
     const m = Math.floor(t / 60), s = Math.floor(t % 60)
     return `${m}:${s.toString().padStart(2, '0')}`
   }
-
-  // O(1) 歌曲查找 Map — 避免队列渲染时每次 O(N*M) find (Efficiency #1 fix)
-  const songsMap = useMemo(() => {
-    const m = new Map<string, SongMeta>()
-    for (const s of songs) m.set(s.id, s)
-    return m
-  }, [songs])
 
   const isFav = currentSong.isFavorite
 
