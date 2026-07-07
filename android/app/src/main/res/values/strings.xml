@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">MusicPlayerPro</string>
+    <string name="title_activity_main">MusicPlayerPro</string>
+    <string name="package_name">com.musicplayerpro.app</string>
+    <string name="custom_url_scheme">com.musicplayerpro.app</string>
+</resources>

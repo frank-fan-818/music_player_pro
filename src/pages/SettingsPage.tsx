@@ -1,6 +1,6 @@
 import { useSettingsStore, EQ_PRESETS } from '../stores/settingsStore'
 import type { EQPreset } from '../stores/settingsStore'
-import { audioEngine } from '../engine/audioEngine'
+import { audioController as audioEngine } from '../engine/audioController'
 
 const bandLabels = ['60 Hz', '250 Hz', '1 kHz', '4 kHz', '16 kHz']
 

@@ -9,7 +9,7 @@
  *   - H4: onTrackEnd 中 loadAndPlay 添加 try-catch, 防止卡死在 loading 状态
  */
 import { create } from 'zustand'
-import { audioEngine } from '../engine/audioEngine'
+import { audioController as audioEngine } from '../engine/audioController'
 import { songService } from '../db/songService'
 import type { Song, PlayMode } from '../types'
 

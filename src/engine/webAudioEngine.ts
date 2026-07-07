@@ -1,35 +1,13 @@
 /**
- * 音频引擎 v4.1
+ * Web Audio 音频引擎 — 浏览器 PWA 模式
  *
- * 核心设计:
- *   buffer (持久)   : 解码后的音频数据, 仅 load() 时替换
- *   source (临时)   : 每次 play() 新建
- *   playGen (计数器) : stopSource() 递增, onended 检查是否过期
- *                     解决了 Web Audio onended 异步派发导致误判的问题
- *
- * v4.1 修复:
- *   - C2: 添加 play 重入锁, 防止并发 play() 产生双 source
- *   - H1: 添加 cancelRequested 标记, 防止 async 窗口内 pause() 静默失败
- *   - H2: 添加 AudioContext statechange 监听, 处理标签页后台化挂起
- *   - 音量变化添加增益斜坡, 消除咔嗒声
- *   - 暂停/切歌添加 30ms 淡出, 消除波形阶跃咔嗒声
- *   - decodeAudioData 超时的未处理 rejection 抑制
+ * v4.1 + IAudioEngine 接口
  */
 import { songService } from '../db/songService'
-
-export type EngineState = 'idle' | 'loading' | 'ready' | 'playing' | 'paused'
-
-export interface PlaybackListener {
-  onStateChange: (state: EngineState) => void
-  onTimeUpdate: (currentTime: number, duration: number) => void
-  onTrackEnd: () => void | Promise<void>
-  onError: (error: string) => void
-  onLoadingProgress?: (phase: string) => void
-}
-
+import type { IAudioEngine, EngineState, PlaybackListener } from './types'
 import type { EQBand } from '../stores/settingsStore'
 
-export class AudioEngine {
+export class WebAudioEngine implements IAudioEngine {
   private ctx: AudioContext | null = null
   private gainNode: GainNode | null = null
   private analyser: AnalyserNode | null = null
@@ -332,4 +310,4 @@ export class AudioEngine {
   getCurrentSongId(): string | null { return this.currentSongId }
 }
 
-export const audioEngine = new AudioEngine()
+export const webAudioEngine = new WebAudioEngine()

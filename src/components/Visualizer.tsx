@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { audioEngine } from '../engine/audioEngine'
+import { audioController as audioEngine } from '../engine/audioController'
 import { useSettingsStore } from '../stores/settingsStore'
 
 export default function Visualizer() {
