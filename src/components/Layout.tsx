@@ -1,11 +1,14 @@
 import { Outlet } from 'react-router-dom'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import TabBar from './TabBar'
 import MiniPlayer from './MiniPlayer'
 import FullPlayer from './FullPlayer'
+import { initMediaSession } from '../engine/mediaSession'
 
 export default function Layout() {
   const [fullPlayerOpen, setFullPlayerOpen] = useState(false)
+
+  useEffect(() => { initMediaSession() }, [])
 
   return (
     <div className="h-screen flex flex-col bg-obsidian-900 overflow-hidden">

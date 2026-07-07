@@ -1,4 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom'
+import { haptic } from '../utils/haptics'
 
 const tabs = [
   {
@@ -68,6 +69,7 @@ export default function TabBar() {
             <NavLink
               key={tab.path}
               to={tab.path}
+              onClick={() => { if (!isActive) haptic('selection') }}
               className="flex flex-col items-center justify-center gap-0.5 min-w-0 flex-1 h-full relative"
             >
               <div className={`w-[22px] h-[22px] transition-colors duration-200 ${

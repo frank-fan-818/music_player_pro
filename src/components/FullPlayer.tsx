@@ -4,6 +4,7 @@ import { useLibraryStore } from '../stores/libraryStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import Visualizer from './Visualizer'
 import CoverImage from './CoverImage'
+import { haptic } from '../utils/haptics'
 import type { PlayMode, SongMeta } from '../types'
 
 // --- module-level constants ---
@@ -98,6 +99,13 @@ export default function FullPlayer({ isOpen, onClose }: Props) {
   const [lyricsText, setLyricsText] = useState('')
   const [showQueue, setShowQueue] = useState(false)
 
+  // 滑动 + 拖拽状态
+  const [swipeX, setSwipeX] = useState(0)
+  const [dismissY, setDismissY] = useState(0)
+  const swipeRef = useRef({ startX: 0, startY: 0, active: false, horizontal: false })
+  const DISMISS_THRESHOLD = 100
+  const SWIPE_THRESHOLD = 60
+
   const draggingRef = useRef(false)
   const progressRef = useRef<HTMLDivElement>(null)
   const lyricsScrollRef = useRef<HTMLDivElement>(null)
@@ -157,6 +165,54 @@ export default function FullPlayer({ isOpen, onClose }: Props) {
     if (rect) setDragPos(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)))
   }
 
+  // === 滑动切歌 (cover 区域水平滑动) ===
+  const handleSwipeStart = (e: React.PointerEvent) => {
+    if (e.pointerType === 'mouse') return
+    swipeRef.current = { startX: e.clientX, startY: e.clientY, active: true, horizontal: false }
+  }
+  const handleSwipeMove = (e: React.PointerEvent) => {
+    if (!swipeRef.current.active) return
+    const dx = e.clientX - swipeRef.current.startX
+    const dy = e.clientY - swipeRef.current.startY
+    if (!swipeRef.current.horizontal && Math.abs(dx) > 10) {
+      swipeRef.current.horizontal = true
+    }
+    if (swipeRef.current.horizontal && Math.abs(dx) > Math.abs(dy)) {
+      setSwipeX(dx)
+    }
+  }
+  const handleSwipeEnd = () => {
+    if (!swipeRef.current.active) return
+    swipeRef.current.active = false
+    if (swipeRef.current.horizontal && Math.abs(swipeX) > SWIPE_THRESHOLD) {
+      haptic('light')
+      if (swipeX < 0) requestNext()
+      else requestPrevious()
+    }
+    setSwipeX(0)
+  }
+
+  // === 拖拽关闭 (header 区域垂直下拉) ===
+  const handleDismissStart = (e: React.PointerEvent) => {
+    if (e.pointerType === 'mouse') return
+    swipeRef.current = { startX: e.clientX, startY: e.clientY, active: true, horizontal: false }
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+  const handleDismissMove = (e: React.PointerEvent) => {
+    if (!swipeRef.current.active) return
+    const dy = e.clientY - swipeRef.current.startY
+    if (dy > 0) setDismissY(dy)
+  }
+  const handleDismissEnd = (e: React.PointerEvent) => {
+    if (!swipeRef.current.active) return
+    swipeRef.current.active = false
+    if (dismissY > DISMISS_THRESHOLD) {
+      haptic('medium')
+      onClose()
+    }
+    setDismissY(0)
+  }
+
   if (!isOpen || !currentSong) return null
 
   const displayProgress = dragPos !== null ? dragPos * 100 : duration > 0 ? (currentTime / duration) * 100 : 0
@@ -187,8 +243,15 @@ export default function FullPlayer({ isOpen, onClose }: Props) {
       <div className="absolute inset-0 bg-obsidian-900/70 backdrop-blur-heavy pointer-events-none" />
 
       <div className="relative z-10 flex flex-col h-full">
-        {/* header — minimal */}
-        <div className="flex items-center justify-between px-6 pt-6 safe-top">
+        {/* header — minimal; drag down to dismiss */}
+        <div
+          className="flex items-center justify-between px-6 pt-6 safe-top"
+          onPointerDown={handleDismissStart}
+          onPointerMove={handleDismissMove}
+          onPointerUp={handleDismissEnd}
+          onPointerCancel={handleDismissEnd}
+          style={{ transform: `translateY(${dismissY}px)`, transition: dismissY === 0 ? 'transform 0.3s ease' : 'none' }}
+        >
           <button onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-full bg-white/[0.04] hover:bg-white/[0.08] transition-colors">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5 text-text-secondary">
               <polyline points="16,4 8,12 16,20" />
@@ -226,8 +289,16 @@ export default function FullPlayer({ isOpen, onClose }: Props) {
           </div>
         </div>
 
-        {/* cover / lyrics / visualizer — tap to toggle lyrics */}
-        <div className="flex-1 flex items-center justify-center px-6 py-4" onClick={() => setShowLyrics(!showLyrics)}>
+        {/* cover / lyrics / visualizer — swipe to skip, tap to toggle lyrics */}
+        <div
+          className="flex-1 flex items-center justify-center px-6 py-4 select-none"
+          style={{ touchAction: 'pan-y', transform: `translateX(${swipeX}px)` }}
+          onClick={() => setShowLyrics(!showLyrics)}
+          onPointerDown={handleSwipeStart}
+          onPointerMove={handleSwipeMove}
+          onPointerUp={handleSwipeEnd}
+          onPointerCancel={handleSwipeEnd}
+        >
           {visualizerEnabled && isPlaying && !showLyrics ? (
             /* 可视化频谱 */
             <div className="w-full max-w-[320px] aspect-square flex items-center justify-center">
@@ -437,6 +508,7 @@ export default function FullPlayer({ isOpen, onClose }: Props) {
           {/* play mode — with hover tooltip */}
           <div className="relative group">
             <button onClick={() => {
+              haptic('selection')
               setPlayMode(PLAY_MODE_ORDER[(PLAY_MODE_ORDER.indexOf(playMode) + 1) % PLAY_MODE_ORDER.length])
             }} className="w-9 h-9 flex items-center justify-center text-text-muted group-hover:text-gold-400 transition-colors">
               <PlayModeIcon mode={playMode} />
@@ -448,7 +520,7 @@ export default function FullPlayer({ isOpen, onClose }: Props) {
           </div>
 
           {/* prev */}
-          <button onClick={requestPrevious} className="w-10 h-10 flex items-center justify-center text-text-primary hover:text-gold-400 transition-colors">
+          <button onClick={() => { haptic('light'); requestPrevious() }} className="w-10 h-10 flex items-center justify-center text-text-primary hover:text-gold-400 transition-colors">
             <svg viewBox="0 0 24 24" fill="currentColor" className="w-[22px] h-[22px]">
               <polygon points="7,4 18,12 7,20" transform="scale(-1,1) translate(-24,0)" />
               <line x1="4" y1="5" x2="4" y2="19" stroke="currentColor" strokeWidth="2.5" />
@@ -457,7 +529,7 @@ export default function FullPlayer({ isOpen, onClose }: Props) {
 
           {/* play/pause — gold ring with glow */}
           <button
-            onClick={requestToggle}
+            onClick={() => { haptic('medium'); requestToggle() }}
             className="relative w-[68px] h-[68px] rounded-full flex items-center justify-center transition-all active:scale-95"
             style={{
               background: 'linear-gradient(145deg, #F5C542, #D4A020)',
@@ -479,7 +551,7 @@ export default function FullPlayer({ isOpen, onClose }: Props) {
           </button>
 
           {/* next */}
-          <button onClick={requestNext} className="w-10 h-10 flex items-center justify-center text-text-primary hover:text-gold-400 transition-colors">
+          <button onClick={() => { haptic('light'); requestNext() }} className="w-10 h-10 flex items-center justify-center text-text-primary hover:text-gold-400 transition-colors">
             <svg viewBox="0 0 24 24" fill="currentColor" className="w-[22px] h-[22px]">
               <polygon points="7,4 18,12 7,20" />
               <line x1="20" y1="5" x2="20" y2="19" stroke="currentColor" strokeWidth="2.5" />

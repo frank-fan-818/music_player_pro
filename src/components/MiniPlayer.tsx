@@ -1,4 +1,5 @@
 import { useAudioStore } from '../stores/audioStore'
+import { haptic } from '../utils/haptics'
 
 interface Props {
   onExpand: () => void
@@ -47,7 +48,7 @@ export default function MiniPlayer({ onExpand }: Props) {
         {/* controls */}
         <div className="flex items-center gap-0.5 flex-shrink-0">
           <button
-            onClick={(e) => { e.stopPropagation(); requestToggle() }}
+            onClick={(e) => { e.stopPropagation(); haptic('light'); requestToggle() }}
             className="w-9 h-9 flex items-center justify-center text-gold-400 hover:text-gold-300 transition-colors"
             aria-label={isPlaying ? '暂停' : '播放'}
           >
@@ -66,7 +67,7 @@ export default function MiniPlayer({ onExpand }: Props) {
           </button>
 
           <button
-            onClick={(e) => { e.stopPropagation(); requestNext() }}
+            onClick={(e) => { e.stopPropagation(); haptic('light'); requestNext() }}
             className="w-9 h-9 flex items-center justify-center text-text-muted hover:text-text-secondary transition-colors"
             aria-label="下一曲"
           >
