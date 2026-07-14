@@ -98,6 +98,7 @@ export default function FullPlayer({ isOpen, onClose }: Props) {
   const [editingLyrics, setEditingLyrics] = useState(false)
   const [lyricsText, setLyricsText] = useState('')
   const [showQueue, setShowQueue] = useState(false)
+  const [showVolume, setShowVolume] = useState(false)
 
   // 滑动 + 拖拽状态
   const [swipeX, setSwipeX] = useState(0)
@@ -557,24 +558,53 @@ export default function FullPlayer({ isOpen, onClose }: Props) {
               <line x1="20" y1="5" x2="20" y2="19" stroke="currentColor" strokeWidth="2.5" />
             </svg>
           </button>
-        </div>
 
-        {/* volume */}
-        <div className="flex items-center gap-3 px-8 mb-4">
-          <svg viewBox="0 0 24 24" fill="currentColor" className="w-[18px] h-[18px] text-text-muted flex-shrink-0">
-            <polygon points="11,5 6,9 2,9 2,15 6,15 11,19" />
-            {volume > 0.4 && <path d="M15.54 8.46a5 5 0 0 1 0 7.07" fill="none" stroke="currentColor" strokeWidth="2" />}
-          </svg>
-          <input type="range" min="0" max="1" step="0.01" value={volume}
-            onChange={(e) => setVolume(parseFloat(e.target.value))}
-            className="flex-1 h-1.5 bg-white/[0.06] rounded-full appearance-none cursor-pointer
-              [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4
-              [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-gold-400
-              [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(245,197,66,0.5)] [&::-webkit-slider-thumb]:cursor-grab"
-          />
-          <span className="text-xs text-text-muted tabular-nums w-8 text-right font-medium">
-            {Math.round(volume * 100)}
-          </span>
+          {/* volume */}
+          <div className="relative">
+            <button
+              onClick={() => setShowVolume(!showVolume)}
+              className="w-9 h-9 flex items-center justify-center text-text-muted hover:text-gold-400 transition-colors"
+            >
+              {volume === 0 ? (
+                <svg viewBox="0 0 24 24" fill="currentColor" className="w-[18px] h-[18px]">
+                  <polygon points="11,5 6,9 2,9 2,15 6,15 11,19" />
+                  <line x1="23" y1="1" x2="1" y2="23" stroke="currentColor" strokeWidth="2" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" fill="currentColor" className="w-[18px] h-[18px]">
+                  <polygon points="11,5 6,9 2,9 2,15 6,15 11,19" />
+                  {volume > 0.4 && <path d="M15.54 8.46a5 5 0 0 1 0 7.07" fill="none" stroke="currentColor" strokeWidth="2" />}
+                </svg>
+              )}
+            </button>
+
+            {showVolume && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowVolume(false)} />
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 z-20 glass rounded-2xl px-4 py-3 shadow-2xl shadow-black/60 ring-1 ring-white/[0.06] animate-scale-in flex items-center gap-3 w-56">
+                  <svg viewBox="0 0 24 24" fill="currentColor" className="w-[16px] h-[16px] text-text-muted flex-shrink-0">
+                    <polygon points="11,5 6,9 2,9 2,15 6,15 11,19" />
+                    {volume > 0.4 && <path d="M15.54 8.46a5 5 0 0 1 0 7.07" fill="none" stroke="currentColor" strokeWidth="2" />}
+                  </svg>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={volume}
+                    onChange={(e) => setVolume(parseFloat(e.target.value))}
+                    className="flex-1 h-1.5 bg-white/[0.06] rounded-full appearance-none cursor-pointer
+                      [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4
+                      [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-gold-400
+                      [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(245,197,66,0.5)] [&::-webkit-slider-thumb]:cursor-grab"
+                  />
+                  <span className="text-xs text-text-muted tabular-nums w-7 text-right font-medium">
+                    {Math.round(volume * 100)}
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
       </div>
