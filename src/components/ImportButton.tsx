@@ -37,7 +37,7 @@ export default function ImportButton() {
       <button
         onClick={() => fileRef.current?.click()}
         disabled={importing}
-        className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold disabled:opacity-40 active:scale-95 transition-all"
+        className="flex items-center justify-center w-9 h-9 rounded-full disabled:opacity-40 active:scale-95 transition-all"
         style={{
           background: importing ? 'rgba(255,255,255,0.06)' : 'linear-gradient(135deg, rgba(245,197,66,0.15), rgba(245,197,66,0.06))',
           border: '1px solid rgba(245,197,66,0.15)',
@@ -51,7 +51,6 @@ export default function ImportButton() {
             <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
           </svg>
         )}
-        {importing ? '导入中...' : '导入'}
       </button>
 
       {/* 进度条 */}

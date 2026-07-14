@@ -50,9 +50,8 @@ export default function NowPlayingPage() {
   }, [query, songs])
 
   return (
-    <div className="pt-14 px-5 pb-4">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-display font-extrabold text-[32px] tracking-[-0.025em] text-text-primary">现在就听</h1>
+    <div className="pt-2 px-5 pb-4">
+      <div className="flex items-center justify-end mb-4">
         <div className="flex items-center gap-2">
           <button onClick={() => navigate('/settings')}
             className="w-9 h-9 flex items-center justify-center rounded-full text-text-muted hover:text-gold-400 hover:bg-white/[0.04] transition-all">
@@ -60,19 +59,6 @@ export default function NowPlayingPage() {
               <circle cx="12" cy="12" r="3" /><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
             </svg>
           </button>
-          {songs.length > 0 && (
-            <button
-              onClick={() => { setSelectMode(!selectMode); setSelected(new Set()) }}
-              className="px-4 py-2 rounded-full text-sm font-semibold active:scale-95 transition-all"
-              style={{
-                background: selectMode ? 'rgba(245,197,66,0.15)' : 'rgba(255,255,255,0.04)',
-                border: `1px solid ${selectMode ? 'rgba(245,197,66,0.3)' : 'rgba(255,255,255,0.06)'}`,
-                color: selectMode ? '#F5C542' : '#9E9EA4',
-              }}
-            >
-              {selectMode ? '取消' : '选择'}
-            </button>
-          )}
           <ImportButton />
         </div>
       </div>

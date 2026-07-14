@@ -372,7 +372,7 @@ export default function FullPlayer({ isOpen, onClose }: Props) {
             </div>
           ) : (
             /* cover view */
-            <div className={`w-full max-w-[320px] aspect-square rounded-2xl overflow-hidden shadow-2xl shadow-black/60 ring-1 ring-white/[0.04] ${currentSong.lyrics ? 'cursor-pointer' : ''}`}>
+            <div className={`relative w-full max-w-[320px] aspect-square rounded-2xl overflow-hidden shadow-2xl shadow-black/60 ring-1 ring-white/[0.04] ${currentSong.lyrics ? 'cursor-pointer' : ''}`}>
               {currentSong.coverArt ? (
                 <img src={currentSong.coverArt} alt={currentSong.title} className="w-full h-full object-cover animate-breathe" />
               ) : (
@@ -414,7 +414,7 @@ export default function FullPlayer({ isOpen, onClose }: Props) {
               <div className="absolute inset-y-0 left-0 bg-gold-400/80 rounded-full" style={{ width: `${displayProgress}%` }} />
               {/* glowing knob */}
               <div
-                className="absolute top-1/2 w-3.5 h-3.5 rounded-full transition-all duration-200"
+                className={`absolute top-1/2 w-3.5 h-3.5 rounded-full ${dragPos === null ? 'transition-all duration-200' : ''}`}
                 style={{
                   left: `${displayProgress}%`,
                   transform: `translate(-50%, -50%)`,
@@ -504,7 +504,7 @@ export default function FullPlayer({ isOpen, onClose }: Props) {
         )}
 
         {/* controls */}
-        <div className="flex items-center justify-center gap-5 px-8 mb-4">
+        <div className="flex items-center justify-center gap-6 px-8 mb-3">
           {/* play mode — with hover tooltip */}
           <div className="relative group">
             <button onClick={() => {
@@ -557,24 +557,24 @@ export default function FullPlayer({ isOpen, onClose }: Props) {
               <line x1="20" y1="5" x2="20" y2="19" stroke="currentColor" strokeWidth="2.5" />
             </svg>
           </button>
+        </div>
 
-          {/* volume — full-width standalone row */}
-          <div className="flex items-center gap-3 px-8 mb-3">
-            <svg viewBox="0 0 24 24" fill="currentColor" className="w-[18px] h-[18px] text-text-muted flex-shrink-0">
-              <polygon points="11,5 6,9 2,9 2,15 6,15 11,19" />
-              {volume > 0.4 && <path d="M15.54 8.46a5 5 0 0 1 0 7.07" fill="none" stroke="currentColor" strokeWidth="2" />}
-            </svg>
-            <input type="range" min="0" max="1" step="0.01" value={volume}
-              onChange={(e) => setVolume(parseFloat(e.target.value))}
-              className="flex-1 h-1.5 bg-white/[0.06] rounded-full appearance-none cursor-pointer
-                [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4
-                [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-gold-400
-                [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(245,197,66,0.5)] [&::-webkit-slider-thumb]:cursor-grab"
-            />
-            <span className="text-xs text-text-muted tabular-nums w-8 text-right font-medium">
-              {Math.round(volume * 100)}
-            </span>
-          </div>
+        {/* volume */}
+        <div className="flex items-center gap-3 px-8 mb-4">
+          <svg viewBox="0 0 24 24" fill="currentColor" className="w-[18px] h-[18px] text-text-muted flex-shrink-0">
+            <polygon points="11,5 6,9 2,9 2,15 6,15 11,19" />
+            {volume > 0.4 && <path d="M15.54 8.46a5 5 0 0 1 0 7.07" fill="none" stroke="currentColor" strokeWidth="2" />}
+          </svg>
+          <input type="range" min="0" max="1" step="0.01" value={volume}
+            onChange={(e) => setVolume(parseFloat(e.target.value))}
+            className="flex-1 h-1.5 bg-white/[0.06] rounded-full appearance-none cursor-pointer
+              [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4
+              [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-gold-400
+              [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(245,197,66,0.5)] [&::-webkit-slider-thumb]:cursor-grab"
+          />
+          <span className="text-xs text-text-muted tabular-nums w-8 text-right font-medium">
+            {Math.round(volume * 100)}
+          </span>
         </div>
 
       </div>

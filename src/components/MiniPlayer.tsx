@@ -6,7 +6,7 @@ interface Props {
 }
 
 export default function MiniPlayer({ onExpand }: Props) {
-  const { currentSong, isPlaying, isLoading, currentTime, duration, requestToggle, requestNext } = useAudioStore()
+  const { currentSong, isPlaying, isLoading, currentTime, duration, requestToggle, requestNext, requestPrevious } = useAudioStore()
 
   if (!currentSong) return null
 
@@ -47,6 +47,16 @@ export default function MiniPlayer({ onExpand }: Props) {
 
         {/* controls */}
         <div className="flex items-center gap-0.5 flex-shrink-0">
+          <button
+            onClick={(e) => { e.stopPropagation(); haptic('light'); requestPrevious() }}
+            className="w-9 h-9 flex items-center justify-center text-text-muted hover:text-text-secondary transition-colors"
+            aria-label="上一曲"
+          >
+            <svg viewBox="0 0 24 24" fill="currentColor" className="w-[16px] h-[16px]">
+              <polygon points="7,4 18,12 7,20" transform="scale(-1,1) translate(-24,0)" />
+            </svg>
+          </button>
+
           <button
             onClick={(e) => { e.stopPropagation(); haptic('light'); requestToggle() }}
             className="w-9 h-9 flex items-center justify-center text-gold-400 hover:text-gold-300 transition-colors"
